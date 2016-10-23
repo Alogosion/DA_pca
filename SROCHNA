@@ -1,0 +1,219 @@
+## 5: Comparison of a normalized and centralized matrix with it's SVD 
+
+Функция reconstructMatrix перемножает матрицы U,S,t(V) и возвращает получившуюся матрицу, затем функция identical сравнивает исходную и получившуюся матрицы, округленные до 2 знака после запятой:
+```{r}
+reconstructMatrix <- function(u, s, v) {
+	res <- u %*% s %*% t(v)
+	return(res)
+}
+result <- reconstructMatrix(u,s,v)
+identical(round(result, 2), round(cn_data, 2))
+```
+## 6: Find matrixes and their ranks
+
+Функция rec_reconstructMatrix восстанавливает исходную матрицу путем перемножения матриц U,S,t(V) до k-того порядка:
+```{r}
+rec_reconstructMatrix <- function(u, s, v, k) {
+	res <- matrix(data = 0:0, nrow = nrow(u), ncol = ncol(v))
+	if (k != 0) {
+		res <- s[k, k] * u[, k] %*% t(v[, k])
+		k <- k - 1
+		res <- res + rec_reconstructMatrix(u, s, v, k)
+	}
+	return(res)
+}
+am1 <- rec_reconstructMatrix(u, s, v, 1)
+am1[1:10,]
+rankofam1 <- rankMatrix(am1)[1]
+rankofam1
+am2 <- rec_reconstructMatrix(u, s, v, 2)
+am2[1:10,]
+rankofam2 <- rankMatrix(am2)[1]
+rankofam2
+am3 <- rec_reconstructMatrix(u, s, v, 3)
+am3[1:10,]
+rankofam3 <- rankMatrix(am3)[1]
+rankofam3
+am4 <- rec_reconstructMatrix(u, s, v, 4)
+am4[1:10,]
+rankofam4 <- rankMatrix(am4)[1]
+rankofam4
+am5 <- rec_reconstructMatrix(u, s, v, 5)
+am5[1:10,]
+rankofam5 <- rankMatrix(am5)[1]
+rankofam5
+am6 <- rec_reconstructMatrix(u, s, v, 6)
+am6[1:10,]
+rankofam6 <- rankMatrix(am6)[1]
+rankofam6
+
+```
+Вывод:
+```{s}
+  Видно, что прибавление к k-той матрице k+1-ого слагаемого, содердащего k+1 сингулярное число увеличивает ранг матрицы ровно на 1. Таким образом, прибавление k+1-ого слагаемого увеличивает количество независимых столбцов или строк ровно на 1. Однако, если доля объясненной вариации при добавлении не слишком велика, можно принебречь k+1 слагаемым, так как оставшиеся столбцы можно представить линейной комбинацией "главных факторов".
+```
+
+## 7: The comparison of results with mistake of approximization in Frobenius norm
+
+Функция checkViaFnorm 
+```{r}
+checkViaFnorm <- function(cn_data, mtrx) {
+	res <- norm(cn_data - mtrx, "F")
+	return(res)
+}
+```
+Возьмем матрицу с 3 главными компонентами и сравним ее норму Фробениуса и корень из суммы квадратов отброшенных сингулярных чисел:
+```{r}
+result <- identical(round(checkViaFnorm(cn_data, am3),2), round(sqrt(s[4,4]^2 + s[5,5]^2 + s[6,6]^2),2))
+result
+```
+## 8: The comparison of results with mistake of approximization in Euclidean norm
+```{r}
+checkViaEnorm <- function(cn_data, mtrx) {
+	eigen_vals <- eigen(t(cn_data - mtrx) %*% (cn_data - mtrx), only.values = TRUE)
+	e_norm <- sqrt(max(eigen_vals$values))
+	return(e_norm)
+}
+```
+Возьмем матрицу с 3 главными компонентами и сравним ее норму Евклида и k+1 отброшенное сингулярное число:
+```{r}
+result <- identical(round(checkViaEnorm(cn_data, am3),2), round(s[4,4],2))
+result
+```
+## 9: Finding optimum number of principal components
+
+Функия getAmountOfComponents ищет количество главных факторов основываясь на доле объясненной вариации, которая не должна быть меньше 0,8:
+```{r}
+getAmountOfComponents <- function(weight_arr, overall_factors_val) {
+	threshold <- 0.8
+	res <- NaN
+	for (i in 1:length(weight_arr)) {
+		if (sum(weight_arr[1:i]) >= threshold){
+			res <- i
+			break
+		}
+	}
+	return(res)
+}
+```
+Сумма всех сингулярных чисел:
+```{r}
+overall <- sum(svd_data$d)
+```
+Поиск веса каждого сингулярного числа в общей доле вариации: 
+```{r}
+weightOfSV <- vector(mode = "numeric", length = rankOfCNdata)
+for (i in 1:length(svd_data$d)) {
+    weightOfSV[i] <- svd_data$d[i] / overall
+}
+amountOfComponents <- getAmountOfComponents(weightOfSV, overall)
+```
+График доли каждого отдельного компонента в общей объясненной вариации:
+```{r}
+qplot(y = 100*weightOfSV, x = 1:length(weightOfSV), geom = c("point", "line"), ylab = "Weight, %", xlab = "Factor")
+```
+
+Ошибка аппроксимации в норме Евклида:
+  Сингулярные числа:
+```{r}
+sv <- svd_data$d
+```
+  Собственные значения:
+```{r}
+ev <- sv^2
+err2 <- c(sv[1:length(sv)], 0)
+qplot(x = 1:length(err2), 
+      y = err2, 
+      geom = c("point", "line"),
+      xlab = "Число главных компонент",
+      ylab = "Ошибка по норме Евклида")
+```
+
+Ошибка аппроксимации в норме Фробениуса:
+```{r}
+errF <- c(sapply(1:(length(ev)-1), 
+                 function(x, y) {sqrt(sum(y[(x+1):length(y)]))}, 
+                 y = ev),
+          0)
+qplot(x = 1:length(errF), 
+      y = errF, 
+      geom = c("point", "line"),
+      xlab = "Число главных компонент",
+      ylab = "Ошибка по норме Фробениуса")
+```
+
+Доля объясненной вариации:
+```{r}
+explained_variation <- function() {
+  res <- vector(mode = "numeric", length = length(weightOfSV))
+  for (i in 1:length(weightOfSV)) {
+    res[i] <- sum(weightOfSV[1:i])*100
+  }
+  return(res)
+}
+var <- explained_variation()
+err3 <- c(var[1:length(var)])
+qplot(x = 1:length(err3), 
+      y = err3, 
+      geom = c("point", "line"),
+      xlab = "Число главных компонент",
+      ylab = "Доля объясненной вариации")
+```
+
+## 10: Figure out principal components and matrix of loads
+Функция выбирает из матрицы U столбцы до нужного порядка, т.е. находит матрицу главных факторов:
+```{r}
+getPrincipalComponents <- function(amount, u) {
+  res <- u[, -(amount + 1):-(ncol(u))]
+  return(res)
+}
+PC <- getPrincipalComponents(amountOfComponents, u)
+PC[1:10,]
+```
+Функция перемножает матрицы V и t(S) из SVD для получения матрицы нагрузок:
+```{r}
+getLoadsMatrix <- function(v, s) {
+  return(v %*% t(s))
+}
+LM <- getLoadsMatrix(v, s)
+LM
+```
+## 11: Replacement of original attributes with linear combinations of principal components
+Функция возвращает матрицу, состоящую из линейных комбинаций матрицы нагрузок и главных компонент:
+```{r}
+approximateWithLinCombOfPC <- function(pc, lm) {
+  res <- matrix(nrow = nrow(pc), ncol = ncol(lm))
+  for (i in 1:ncol(res)) {
+    res[, i] <- lm[i, 1] * pc[, 1] + lm[i, 2] * pc[, 2]		
+  }
+  return(res)
+}
+```
+Функция ищет норму Фробениуса и евклидову норму от разницы исходной матрицы и матрицы с рангом 2:
+```{r}
+Err <- function(mtrx, lin_comb) {
+  dif <- mtrx - lin_comb
+  f_err <- norm(dif, type = "F")
+  eigen_vals <- eigen(t(dif) %*% dif, only.values = T)
+  l2_err <- sqrt(max(eigen_vals$values))
+  return(c(f_err, l2_err))
+}
+```
+Ошибка аппроксимации в норме Фробениуса:
+```{r}
+lin_comb <- approximateWithLinCombOfPC(PC,LM)
+norm_f <- Err(cn_data, lin_comb)
+norm_f[1]
+```
+Сравнение ошибки аппроксимации в норме Фробениуса с сингулярными числами:
+```{r}
+identical(round(norm_f[1], 2), round(sqrt(s[3,3]^2+s[4,4]^2+s[5,5]^2+s[6,6]^2), 2))
+```
+Ошибка аппроксимации в норме Евклида:
+```{r}
+norm_f[2]
+```
+Сравнение ошибки аппроксимации в норме Фробениуса с сингулярными числами:
+```{r}
+identical(round(norm_f[2], 2), round(s[3,3], 2))
+```
