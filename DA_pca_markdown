@@ -1,0 +1,270 @@
+---
+title: "Principal Component Analysis"
+author: "Pavel Prudnikov, group 15BI-2"
+output: html_document
+---
+```{r}
+require("Matrix")
+require("ggplot2")
+require(rmngb)
+```
+## 1: Reading data from file
+Считывание информации из txt файла, удаление 7 стобца качественных признаков и последующая запись данных в матрицу raw_data:
+```{r}
+raw_data <- read.table("pmi_5.txt")
+raw_data <- raw_data[-7]
+for (i in 1:ncol(raw_data)) {
+  raw_data[,i] <- rmAttr(raw_data, except = NULL)[i]
+}
+raw_data[1:10,]
+```
+Центрирование матрицы функцией scale и запись в матрицу c_data:
+```{r}
+c_data <- scale(raw_data, scale = FALSE)
+c_data[1:10,]
+```
+Нормировка по евклидовой норме центрированной матрицы и запись в матрицу cn_data:
+```{r}
+cn_data <- scale(c_data, center = FALSE, scale = apply(c_data, 2, norm, type = "2"))
+cn_data[1:10,]
+```
+## 2: Finding a rank of matrix
+```{r}
+rankOfCNdata <- rankMatrix(cn_data)[1]
+rankOfCNdata
+```
+Выводы по поводу ранга матрицы:
+
+## 3: Finding U,S,V matrixes and using own SVD function
+Нахождение матриц U,V,S с помощью встроенных функций:
+
+Нахождение матрицы V:
+```{r}
+getVmtrx <- function(mtrx) {
+  V <- matrix(data = 0:0, nrow = nrow(mtrx), ncol = ncol(mtrx))
+  for (i in 1:ncol(V)) {
+    V[i,] <- eigen(mtrx)$vectors[i,]
+  }
+  return(V)
+}
+```
+  Нахождение матрицы S:
+```{r}
+getSmtrx <- function(mtrx, dim_args) {
+  S <- matrix(data = 0:0, nrow = dim_args[1], ncol = dim_args[2])
+  for (i in 1:min(nrow(S), ncol(S))) {
+    S[i,i] <- sqrt(eigen(mtrx)$values[i])
+  }
+  return(S)
+}
+```
+  Нахождение матрицы U:
+```{r}
+getUmtrx <- function(mtrx) {
+  U <- matrix(data = 0:0, nrow = nrow(mtrx), ncol = ncol(mtrx))
+  for (i in 1:nrow(U)) {
+    U[i,] <- eigen(mtrx)$vectors[i,]
+  }
+  return(U)
+}
+```
+Функция value_decomposition находит матрицу X * t(X) и t(X) * X и матрицы U,S,V и возвращает список из них:
+```{r}
+value_decomposition <- function(mtrx) {
+  dim_list <- dim(mtrx)
+  V_raw_matrix <- t(mtrx)%*% mtrx
+  V <- getVmtrx(V_raw_matrix)
+  S <- getSmtrx(V_raw_matrix, dim_list)
+  U_raw_matrix <- mtrx %*% t(mtrx)
+  U <- getUmtrx(U_raw_matrix)
+  res <- list(u_own = U, s_own = S, v_own = V)
+  return(res)
+}
+```
+Использование собственной функции SVD:
+```{r}
+own_svd <- value_decomposition(cn_data)
+own_svd$u_own[1:10,1:10]
+own_svd$s_own[1:6,]
+own_svd$v_own
+
+```
+Распаковка объектов из типа "list" по их собственным типам:
+```{r}
+list2env(own_svd, .GlobalEnv)
+```
+## 4: In-built SVD function and comparison with own SVD
+Использование встроенной функции SVD:
+```{r}
+svd_data <- svd(cn_data)
+u <- svd_data$u
+u[1:10,]
+s <- diag(svd_data$d)
+s[1:6,]
+v <- svd_data$v
+v
+```
+Сравнение со своей функцией:
+```{r}
+identical(round(abs(own_svd$u_own[,1:6]),2), round(abs(u),2))
+identical(round(abs(own_svd$s_own[1:6,]),2), round(s,2))
+identical(round(abs(own_svd$v_own),2), round(abs(v),2))
+```
+## 5: Comparison of a normalized and centralized matrix with it's SVD 
+```{r}
+reconstructMatrix <- function(u, s, v) {
+	res <- u %*% s %*% t(v)
+	return(res)
+}
+result <- reconstructMatrix(u,s,v)
+identical(round(result, 2), round(cn_data, 2))
+```
+## 6: Find matrixes and their ranks
+```{r}
+rec_reconstructMatrix <- function(u, s, v, k) {
+	res <- matrix(data = 0:0, nrow = nrow(u), ncol = ncol(v))
+	if (k != 0) {
+		res <- s[k, k] * u[, k] %*% t(v[, k])
+		k <- k - 1
+		res <- res + rec_reconstructMatrix(u, s, v, k)
+	}
+	return(res)
+}
+reconstructedMtrx <- round(reconstructMatrix(u, s, v), 2)
+rec_test <- round(rec_reconstructMatrix(u, s, v, rankOfCNdata), 2)
+cn_data_round <- round(cn_data, 2)
+```
+## 7: The comparison of results with mistake of approximization in Frobenius norm
+```{r}
+```
+## 8: The comparison of results with mistake of approximization in Euclidean norm
+```{r}
+```
+## 9: Finding optimum number of principal components
+Функия ищет количество главных факторов основываясь на доле объясненной вариации, которая не должна быть меньше 0,8:
+```{r}
+getAmountOfComponents <- function(weight_arr, overall_factors_val) {
+	threshold <- 0.8
+	res <- NaN
+	for (i in 1:length(weight_arr)) {
+		if (sum(weight_arr[1:i]) >= threshold){
+			res <- i
+			break
+		}
+	}
+	return(res)
+}
+overall <- sum(svd_data$d)
+weightOfSV <- vector(mode = "numeric", length = rankOfCNdata)
+for (i in 1:length(svd_data$d)) {
+    weightOfSV[i] <- svd_data$d[i] / overall
+}
+amountOfComponents <- getAmountOfComponents(weightOfSV, overall)
+```
+Доля каждого отдельного компонента в общей объясненной вариации:
+```{r}
+qplot(y = 100*weightOfSV, x = 1:length(weightOfSV), geom = c("point", "line"), ylab = "Weight, %", xlab = "Factor")
+```
+
+Ошибка аппроксимации в норме Евклида:
+  Сингулярные числа:
+```{r}
+sv <- svd_data$d
+```
+  Собственные значения:
+```{r}
+ev <- sv^2
+err2 <- c(sv[1:length(sv)], 0)
+qplot(x = 1:length(err2), 
+      y = err2, 
+      geom = c("point", "line"),
+      xlab = "Число главных компонент",
+      ylab = "Ошибка по норме Евклида")
+```
+
+Ошибка аппроксимации в норме Фробениуса:
+```{r}
+errF <- c(sapply(1:(length(ev)-1), 
+                 function(x, y) {sqrt(sum(y[(x+1):length(y)]))}, 
+                 y = ev),
+          0)
+qplot(x = 1:length(errF), 
+      y = errF, 
+      geom = c("point", "line"),
+      xlab = "Число главных компонент",
+      ylab = "Ошибка по норме Фробениуса")
+```
+
+Доля объясненной вариации:
+```{r}
+explained_variation <- function() {
+  res <- vector(mode = "numeric", length = length(weightOfSV))
+  for (i in 1:length(weightOfSV)) {
+    res[i] <- sum(weightOfSV[1:i])*100
+  }
+  return(res)
+}
+var <- explained_variation()
+err3 <- c(var[1:length(var)])
+qplot(x = 1:length(err3), 
+      y = err3, 
+      geom = c("point", "line"),
+      xlab = "Число главных компонент",
+      ylab = "Доля объясненной вариации")
+```
+
+## 10: Figure out principal components and matrix of loads
+Функция выбирает из матрицы U столбцы до нужного порядка:
+```{r}
+getPrincipalComponents <- function(amount, u) {
+  res <- u[, -(amount + 1):-(ncol(u))]
+  return(res)
+}
+PC <- getPrincipalComponents(amountOfComponents, u)
+PC[1:10,]
+```
+Функция перемножает матрицы V и t(S) из SVD для получения матрицы нагрузок:
+```{r}
+getLoadsMatrix <- function(v, s) {
+  return(v %*% t(s))
+}
+LM <- getLoadsMatrix(v, s)
+LM
+```
+## 11: Replacement of original attributes with linear combinations of principal components
+Функция возвращает матрицу, состоящую из линейных комбинаций матрицы нагрузок и главных компонент:
+```{r}
+approximateWithLinCombOfPC <- function(pc, lm) {
+  res <- matrix(nrow = nrow(pc), ncol = ncol(lm))
+  for (i in 1:ncol(res)) {
+    res[, i] <- lm[i, 1] * pc[, 1] + lm[i, 2] * pc[, 2]		
+  }
+  return(res)
+}
+
+Err <- function(mtrx, lin_comb) {
+  dif <- mtrx - lin_comb
+  f_err <- norm(dif, type = "F")
+  eigen_vals <- eigen(t(dif) %*% dif, only.values = T)
+  l2_err <- sqrt(max(eigen_vals$values))
+  return(c(f_err, l2_err))
+}
+```
+Ошибка аппроксимации в норме Фробениуса:
+```{r}
+lin_comb <- approximateWithLinCombOfPC(PC,LM)
+norm_f <- Err(cn_data, lin_comb)
+norm_f[1]
+```
+Сравнение ошибки аппроксимации в норме Фробениуса с сингулярными числами:
+```{r}
+identical(round(norm_f[1], 2), round(sqrt(s[3,3]^2+s[4,4]^2+s[5,5]^2+s[6,6]^2), 2))
+```
+Ошибка аппроксимации в норме Евклида:
+```{r}
+norm_f[2]
+```
+Сравнение ошибки аппроксимации в норме Фробениуса с сингулярными числами:
+```{r}
+identical(round(norm_f[2], 2), round(s[3,3], 2))
+```
