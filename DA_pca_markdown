@@ -6,16 +6,13 @@ output: html_document
 ```{r}
 require("Matrix")
 require("ggplot2")
-require(rmngb)
+require("rmngb")
 ```
 ## 1: Reading data from file
 Считывание информации из txt файла, удаление 7 стобца качественных признаков и последующая запись данных в матрицу raw_data:
 ```{r}
 raw_data <- read.table("pmi_5.txt")
 raw_data <- raw_data[-7]
-for (i in 1:ncol(raw_data)) {
-  raw_data[,i] <- rmAttr(raw_data, except = NULL)[i]
-}
 raw_data[1:10,]
 ```
 Центрирование матрицы функцией scale и запись в матрицу c_data:
@@ -133,12 +130,48 @@ rec_reconstructMatrix <- function(u, s, v, k) {
 reconstructedMtrx <- round(reconstructMatrix(u, s, v), 2)
 rec_test <- round(rec_reconstructMatrix(u, s, v, rankOfCNdata), 2)
 cn_data_round <- round(cn_data, 2)
+am1 <- rec_reconstructMatrix(u, s, v, 1)
+am1[1:10,]
+am2 <- rec_reconstructMatrix(u, s, v, 2)
+am2[1:10,]
+am3 <- rec_reconstructMatrix(u, s, v, 3)
+am3[1:10,]
+am4 <- rec_reconstructMatrix(u, s, v, 4)
+am4[1:10,]
+am5 <- rec_reconstructMatrix(u, s, v, 5)
+am5[1:10,]
+am6 <- rec_reconstructMatrix(u, s, v, 6)
+am6[1:10,]
 ```
 ## 7: The comparison of results with mistake of approximization in Frobenius norm
 ```{r}
+checkViaFnorm <- function(mtrx) {
+	
+	rankOf <- rankMatrix(mtrx)
+	croppedS <- diag(s)[c(rankOf:rankMatrix(s)[1])]
+	errF <- sqrt(sum(croppedS ^ 2))
+	cF <- norm(cn_data - mtrx, "F")
+	res <- cF - errF
+	return(c(errF, cF, res))
+}
+
+checkFN_test <- checkViaFnorm(am3)
 ```
 ## 8: The comparison of results with mistake of approximization in Euclidean norm
 ```{r}
+checkViaEnorm <- function(mtrx) {
+	rankOf <- rankMatrix(mtrx)[1]
+	errE <- NaN
+	if (rankOf == rankOfCNdata) {
+		errE <- diag(s)[rankOfCNdata]
+	}
+	errE <- diag(s)[rankOf + 1]
+	eigen_vals <- eigen(t(mtrx) %*% mtrx, only.values = T)
+	e_norm <- sqrt(max(eigen_vals$values))
+	res <- e_norm - errE
+	return(c(e_norm, errE, res))
+}
+checkEN_test <- checkViaEnorm(am4)
 ```
 ## 9: Finding optimum number of principal components
 Функия ищет количество главных факторов основываясь на доле объясненной вариации, которая не должна быть меньше 0,8:
@@ -268,3 +301,5 @@ norm_f[2]
 ```{r}
 identical(round(norm_f[2], 2), round(s[3,3], 2))
 ```
+
+
